@@ -1,0 +1,13 @@
+# WATCHPOINTS
+
+# Set a watchpoint for an expression. GDB will break when expr is written into by the program and its value changes.
+# watch expr
+
+# Set a watchpoint that will break when watch expr is read by the program.
+# rwatch expr
+
+# Set a watchpoint that will break when expr is either read or written into by the program.
+# awatch expr
+
+# This command prints a list of watchpoints, breakpoints, and catchpoints; it is the same as info break.
+# info watchpoints

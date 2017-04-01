@@ -1,0 +1,3 @@
+#!/bin/bash
+cd bin
+gdb -x ../breakpoints -x ../watchpoints -x gdbinit ./dreck 

@@ -21,6 +21,10 @@
 #include "token.h"
 #include "line.h"
 #include "block.h"
+#include "gui.h"
+
+
+static const int row_margin = 5;
 
 
 struct BLOCK *make_empty_block(void)
@@ -64,7 +68,7 @@ struct BLOCK *make_block_from_file(const char *path)
 }
 
 
-static void set_block_focus(struct BLOCK *b, const unsigned int position, const unsigned int index)
+static void set_block_focus(struct BLOCK *b, const int position, const int index)
 {
 
     /* when cursor changes, change block focus too */
@@ -72,6 +76,41 @@ static void set_block_focus(struct BLOCK *b, const unsigned int position, const 
     b->focus_cursor = position;
 
 }
+
+
+
+static void scroll_pane_up(struct BLOCK *b)
+{
+
+    /* scroll up until we can see the focus line */
+    if (b->focus_line > row_margin) { 
+        if (b->focus_line < b->camera_y + row_margin + 1) {
+            b->camera_y = b->focus_line - (row_margin) - 1;
+        }
+    }
+    if (b->camera_y < 0)
+        b->camera_y = 0;
+
+}
+
+
+static void scroll_pane_down(struct BLOCK *b)
+{
+
+    /* scroll down until we can see the focus line */
+    const int height = viewport_height();
+    if (b->length < height)
+        return;
+    if (b->focus_line > b->camera_y + (height - row_margin))
+        b->camera_y = b->focus_line - (height - row_margin);
+    if (b->camera_y + height > b->length)
+        b->camera_y = b->length - 1 - height;
+    if (b->camera_y < 0)
+        b->camera_y = 0;
+
+}
+
+
 
 
 static bool move_cursor_right(struct BLOCK *block)
@@ -124,7 +163,7 @@ static bool move_cursor_down(struct BLOCK *block)
 {
 
     /* instructions for moving cursors down */
-    unsigned int a, b;
+    int a, b;
     for (a = block->length; a--; ) {
         struct LINE *line = block->data[a];
         struct CURSOR *cursor = &line->cursor;
@@ -141,6 +180,7 @@ static bool move_cursor_down(struct BLOCK *block)
             }
             add_cursor_point(&block->data[a + 1]->cursor, cp);
             set_block_focus(block, block->data[a + 1]->cursor.point[block->data[a + 1]->cursor.count - 1], a);
+            scroll_pane_down(block);
             remove_point(cursor, cursor->point[b]);
         }
     }
@@ -154,7 +194,7 @@ static bool move_cursor_up(struct BLOCK *block)
 {
 
     /* instructions for moving cursor up */
-    unsigned int a, b;
+    int a, b;
     for (a = 0; a < block->length; a++) {
         struct LINE *line = block->data[a];
         struct CURSOR *cursor = &line->cursor;
@@ -171,6 +211,7 @@ static bool move_cursor_up(struct BLOCK *block)
             }
             add_cursor_point(&block->data[a - 1]->cursor, cp);
             set_block_focus(block, block->data[a - 1]->cursor.point[block->data[a - 1]->cursor.count - 1], a);
+            scroll_pane_up(block);
             remove_point(cursor, cursor->point[b]);
         }
     }
@@ -291,6 +332,8 @@ void make_newline_in_block(struct BLOCK *block, const char direction, const unsi
             struct LINE *line = block->data[b];
             for (c = line->cursor.count; c--;) {
                 split_line_in_block(block, line, line->cursor.point[c], refresh_cursor);
+                block->focus_line = b - 1;
+                scroll_pane_down(block);
             }
         }
     }
@@ -335,25 +378,6 @@ bool remove_char_from_block(struct BLOCK *block, unsigned int direction, unsigne
 
 }
 
-
-void handle_block_camera(struct BLOCK *b, const unsigned int height)
-{
-
-    /* keep block in view at all times */
-    /*  
-    if (b->focus_line > b->camera_y + (height - 8))
-        b->camera_y++;
-    if (b->camera_y + height > b->length)
-        b->camera_y - height;
-    */
-    if (b->focus_line > b->camera_y + (height - 5))
-        b->camera_y = b->focus_line - (height - 6);
-    else if (b->focus_line < b->camera_y + 5)
-        b->camera_y = b->focus_line + 6;
-    if (b->camera_y < 0)
-        b->camera_y = 0;
-
-}
 
 
 void kill_block(struct BLOCK *b)

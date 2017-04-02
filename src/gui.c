@@ -67,6 +67,8 @@ static ALLEGRO_TIMER *timer = NULL;
 static float screen_width;
 static float screen_height;
 
+static const int rows_max = 24;
+static const int cols_max = 80;
 
 const float fps = 60;
 
@@ -78,13 +80,13 @@ const float fps = 60;
 
 unsigned int viewport_height()
 {
-    return 24;
+    return rows_max;
 }
 
 
 float em(void)
 {
-    return screen_height * 0.017;
+    return screen_height * 0.019;
 }
 
 
@@ -175,8 +177,10 @@ void make_window(void)
     screen_width = display_mode_data.width;
     screen_height = display_mode_data.height;
     timer = al_create_timer(1.0 / fps);
+    /*
     al_set_new_display_option(ALLEGRO_SAMPLE_BUFFERS, 1, ALLEGRO_SUGGEST);
     al_set_new_display_option(ALLEGRO_SAMPLES, 8, ALLEGRO_SUGGEST);
+    */
     display = al_create_display(screen_width, screen_height);
     queue = al_create_event_queue();
     al_register_event_source(queue, al_get_display_event_source(display));
@@ -201,24 +205,23 @@ static void show_command_mode(struct TREE *t)
 }
 
 
-static void draw_cursors(struct TREE *t)
+static void draw_cursors(const struct BLOCK *b, const float x, const float y)
 {
 
     /* draw cursors on active block */
-    int row;
-    struct BLOCK *active = active_block(t);
-    for (row = active->length; row--; ) {
+    unsigned int row;
+    for (row = b->length; row--; ) {
 
         /* active cursors */
-        struct LINE *line = active->data[row];
+        struct LINE *line = b->data[row];
         int i;
         for (i = line->cursor.count; i--; ) {
             ALLEGRO_USTR *width_measurement = al_ustr_dup_substr(line->data, 0, al_ustr_offset(line->data, line->cursor.point[i]));
             const float width = al_get_ustr_width(medium.regular, width_measurement);
-            const float x1 = (width) + left_margin();
-            const float y1 = (row * em()) + top_margin() - (active->camera_y * em());
-            const float x2 = (width) + left_margin() + 3;
-            const float y2 = (row * em()) + top_margin() + em() - (active->camera_y * em());
+            const float x1 = (width) + x;
+            const float y1 = (row * em()) + y - (b->camera_y * em());
+            const float x2 = (width) + x + 3;
+            const float y2 = (row * em()) + y + em() - (b->camera_y * em());
             al_draw_filled_rounded_rectangle(x1 - 0.5, y1 - 0.5, 
                     x2 + 0.9, y2 + 0.9, 2, 2, GRAY);
             al_draw_filled_rounded_rectangle(x1, y1, x2, y2, 3, 3, BLACK);
@@ -230,40 +233,41 @@ static void draw_cursors(struct TREE *t)
 }
 
 
+void draw_block(struct BLOCK *b, const float x, const float y)
+{
+
+    /* draw one standard block, at x and y */
+    const float font_width = al_get_text_width(medium.regular, "X");
+    const float width = (font_width * cols_max) + em();
+    const float height = (em() * rows_max) + em();
+    int row  = 0;
+    int rows = rows_max + b->camera_y;
+    float dx = x;
+    float dy = y;
+    ALLEGRO_USTR *buffer = al_ustr_new("");
+    if (b->length < rows)
+        rows = b->length;
+    al_set_clipping_rectangle(x, y, width, height);
+    al_clear_to_color(WHITE);
+    for (row = b->camera_y; row < rows; ++row) {
+        struct LINE *line = b->data[row];
+        al_ustr_assign_substr(buffer, line->data, 0, al_ustr_size(line->data));
+        al_draw_ustr(medium.regular, BLACK, dx, dy, ALLEGRO_ALIGN_LEFT, buffer);
+        dy += em();
+    }
+    draw_cursors(b, x, y);
+    al_set_clipping_rectangle(0, 0, screen_width, screen_height);
+    al_draw_textf(medium.regular, BLACK, 20, 400, ALLEGRO_ALIGN_LEFT, "%d", b->focus_cursor);
+
+}
+
+
 static void draw_tree(struct TREE *t)
 {
 
     /* draw text data tree, followed by overlay */
-    const float rx1 = left_margin();
-    const float ry1 = top_margin();
-    const float rx2 = right_margin();
-    const float ry2 = bottom_margin();
-    const float w = (rx2 - rx1) + (em() * 2);
-    const float h = ry2 - ry1 + (em() * 2);
-    unsigned int max_rows = viewport_height();
-    unsigned int row = 0;
-    float border_size = 0;
     struct BLOCK *active = active_block(t);
-    ALLEGRO_USTR *buffer = al_ustr_new("");
-    handle_block_camera(active, viewport_height());
-    max_rows += active->camera_y;
-    if (active->length < max_rows)
-        max_rows = active->length;
-    al_set_clipping_rectangle(rx1 - em(), ry1 - em(), w, h);
-    for (row = active->camera_y; row < max_rows; ++row) {
-        struct LINE *line = active->data[row];
-        const float y = (row * em()) + top_margin();
-        al_draw_ustr(medium.regular, BLACK, left_margin(), y - (active->camera_y * em()),
-                ALLEGRO_ALIGN_LEFT, line->data);
-    }
-    draw_cursors(t);
-    al_set_clipping_rectangle(0, 0, screen_width, screen_height);
-    for (border_size = 0; border_size < em(); ++border_size) {
-        const float color = (border_size / (em()) * 0.71);
-        al_draw_rectangle(rx1 - border_size, ry1 - border_size,
-                            rx2 + border_size, ry2 + border_size, 
-                            al_map_rgba_f(color, color, color, color), 1);
-    }
+    draw_block(active, left_margin(), top_margin());
 
 }
 
@@ -306,6 +310,11 @@ void accept_key_input(const ALLEGRO_EVENT e, struct TREE *t)
         case ALLEGRO_KEY_BACKSPACE:
             token.command = CMD_DELETE;
             token.direction = DIR_RIGHT;
+            break;
+        case ALLEGRO_KEY_TAB:
+            token.command = CMD_UNICODE;
+            token.uchar = ' ';
+            token.steps = 8;
             break;
         case ALLEGRO_KEY_ENTER:
             token.command = CMD_NEWLINE;
